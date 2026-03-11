@@ -31,10 +31,11 @@ def test_resolve_theme_invalid_name_falls_back():
 
 
 def test_detect_mode_dark_on_macos_dark():
-    with patch("subprocess.run") as mock_run:
-        mock_run.return_value.returncode = 0
-        mock_run.return_value.stdout = "Dark"
-        assert detect_mode() == "dark"
+    with patch.dict(os.environ, {}, clear=True):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "Dark"
+            assert detect_mode() == "dark"
 
 
 def test_detect_mode_light_on_macos_light():
