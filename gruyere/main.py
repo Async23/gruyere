@@ -32,6 +32,8 @@ class Process:
 
 def _selected_style(theme: Theme) -> Style:
     return Style(color=theme.selected_color, bold=True)
+
+
 MAX_DISPLAY_PROCESSES = 4
 
 signal.signal(signal.SIGINT, lambda _, __: sys.exit(0))
@@ -298,7 +300,8 @@ def _render_processes_table(
         help_text = "[bold dim]Commands: ↑/k: Up | ↓/j: Down | d: Toggle details | ENTER: Kill | /: Filter | q: Quit [/bold dim]"
 
     process_count = len(processes)
-    count_text = f"  [dim]Displaying [bold {_selected_style(theme)}]{process_count}[/bold {_selected_style(theme)}] process{'es' if process_count != 1 else ''}[/dim]"
+    style = _selected_style(theme)
+    count_text = f"  [dim]Displaying [{style}]{process_count}[/{style}] process{'es' if process_count != 1 else ''}[/dim]"
 
     return Group(count_text, *panels, Panel(help_text, box=box.SIMPLE))
 
