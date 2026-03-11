@@ -18,6 +18,8 @@ from rich.panel import Panel
 from rich.style import Style
 from rich.text import Text
 
+from gruyere.themes import Theme, resolve_theme
+
 
 @dataclass
 class Process:
@@ -28,7 +30,8 @@ class Process:
     name: str
 
 
-SELECTED_COLOR = Style(color="#EE6FF8", bold=True)
+def _selected_style(theme: Theme) -> Style:
+    return Style(color=theme.selected_color, bold=True)
 MAX_DISPLAY_PROCESSES = 4
 
 signal.signal(signal.SIGINT, lambda _, __: sys.exit(0))
@@ -199,6 +202,8 @@ def _render_processes_table(
     selected: int,
     show_details: bool = False,
     is_filtering: bool = False,
+    *,
+    theme: Theme,
 ):
     if not processes:
         if is_filtering:
@@ -275,7 +280,7 @@ def _render_processes_table(
         # All items get a panel with no border
         panel = Panel(
             content,
-            style=SELECTED_COLOR if i == display_selected else "",
+            style=_selected_style(theme) if i == display_selected else "",
             box=box.SIMPLE,
         )
         panels.append(panel)
@@ -293,20 +298,20 @@ def _render_processes_table(
         help_text = "[bold dim]Commands: ↑/k: Up | ↓/j: Down | d: Toggle details | ENTER: Kill | /: Filter | q: Quit [/bold dim]"
 
     process_count = len(processes)
-    count_text = f"  [dim]Displaying [bold {SELECTED_COLOR}]{process_count}[/bold {SELECTED_COLOR}] process{'es' if process_count != 1 else ''}[/dim]"
+    count_text = f"  [dim]Displaying [bold {_selected_style(theme)}]{process_count}[/bold {_selected_style(theme)}] process{'es' if process_count != 1 else ''}[/dim]"
 
     return Group(count_text, *panels, Panel(help_text, box=box.SIMPLE))
 
 
-def _colorGrid(x_steps: int, y_steps: int) -> List[List[Style]]:
+def _colorGrid(x_steps: int, y_steps: int, theme: Theme) -> List[List[Style]]:
     """Generate a 2D grid of gradient colors using bilinear interpolation."""
     x0y0, x1y0 = (
-        Color.parse("#EE6FF8").get_truecolor(),
-        Color.parse("#EDFF82").get_truecolor(),
+        Color.parse(theme.gradient_top_left).get_truecolor(),
+        Color.parse(theme.gradient_top_right).get_truecolor(),
     )
     x0y1, x1y1 = (
-        Color.parse("#643AFF").get_truecolor(),
-        Color.parse("#14F9D5").get_truecolor(),
+        Color.parse(theme.gradient_bottom_left).get_truecolor(),
+        Color.parse(theme.gradient_bottom_right).get_truecolor(),
     )
 
     return [
@@ -326,12 +331,13 @@ def _colorGrid(x_steps: int, y_steps: int) -> List[List[Style]]:
     ]
 
 
-def create_filter_panel(filter_text: str) -> Panel:
+def create_filter_panel(filter_text: str, theme: Theme) -> Panel:
     """Create the filter input panel."""
+    style = _selected_style(theme)
     return Panel(
-        f"[bold {SELECTED_COLOR}]Filter:[/bold {SELECTED_COLOR}] {filter_text}[blink]_[/blink]",
+        f"[bold {style}]Filter:[/bold {style}] {filter_text}[blink]_[/blink]",
         title="Press BACKSPACE on empty to cancel, ENTER to apply",
-        border_style=SELECTED_COLOR,
+        border_style=style,
     )
 
 
@@ -347,8 +353,8 @@ def apply_filter(filter_text: str, all_processes: list[Process]) -> list[Process
     ]
 
 
-def _render_title():
-    colors = _colorGrid(1, 5)
+def _render_title(theme: Theme):
+    colors = _colorGrid(1, 5, theme)
     title = "Gruyere"
 
     desc = "A tiny program for viewing + killing ports"
@@ -366,7 +372,7 @@ def _render_title():
     for i in range(5):
         indent = " " * (i * 2)
         text.append(indent)
-        text.append(title, style=Style(color="white", bgcolor=colors[i][0].color))
+        text.append(title, style=Style(color=theme.title_fg, bgcolor=colors[i][0].color))
 
         right_text = right_texts[i]
         if right_text is not None:
@@ -378,7 +384,7 @@ def _render_title():
     return text
 
 
-def _show_confirmation_view(console: Console, process: Process, title: Text) -> bool:
+def _show_confirmation_view(console: Console, process: Process, title: Text, theme: Theme) -> bool:
     # Screen should already be cleared before calling this function
     console.print(Panel(title, box=box.SIMPLE))
     console.print(
@@ -389,7 +395,7 @@ def _show_confirmation_view(console: Console, process: Process, title: Text) -> 
             f"[bold]User:[/bold] {process.user}\n"
             f"[bold]Command:[/bold] {process.command}\n\n"
             f"[dim]Press Y to confirm, N to cancel.[/dim]",
-            border_style=SELECTED_COLOR,
+            border_style=_selected_style(theme),
             expand=False,
         )
     )
@@ -418,9 +424,14 @@ def main(
     details: bool = typer.Option(
         False, "--details", "-d", help="Show full command details instead of app name"
     ),
+    theme: Optional[str] = typer.Option(
+        None, "--theme", "-t",
+        help="Color theme (default, one-half-dark, tomorrow, kanagawa, nord)"
+    ),
 ):
+    active_theme = resolve_theme(theme)
     console = Console()
-    text = _render_title()
+    text = _render_title(active_theme)
 
     # Make CLI filter parameters mutable
     cli_port = port
@@ -496,16 +507,16 @@ def main(
                         if is_filtering:
                             live_ref.update(
                                 Group(
-                                    create_filter_panel(filter_text),
+                                    create_filter_panel(filter_text, active_theme),
                                     _render_processes_table(
-                                        processes, selected, details, is_filtering=True
+                                        processes, selected, details, is_filtering=True, theme=active_theme
                                     ),
                                 )
                             )
                         else:
                             live_ref.update(
                                 _render_processes_table(
-                                    processes, selected, details, is_filtering=False
+                                    processes, selected, details, is_filtering=False, theme=active_theme
                                 )
                             )
 
@@ -513,7 +524,7 @@ def main(
         refresh_thread.start()
 
         with Live(
-            _render_processes_table(processes, selected, details),
+            _render_processes_table(processes, selected, details, theme=active_theme),
             console=console,
             refresh_per_second=refresh_rate,
         ) as live:
@@ -552,7 +563,7 @@ def main(
                             selected = 0
                             live.update(
                                 _render_processes_table(
-                                    processes, selected, details, is_filtering=False
+                                    processes, selected, details, is_filtering=False, theme=active_theme
                                 )
                             )
                             continue
@@ -575,9 +586,9 @@ def main(
                 # Update display in filtering mode (after handling all filtering keys or navigation)
                 if is_filtering:
                     display = Group(
-                        create_filter_panel(filter_text),
+                        create_filter_panel(filter_text, active_theme),
                         _render_processes_table(
-                            processes, selected, details, is_filtering=True
+                            processes, selected, details, is_filtering=True, theme=active_theme
                         ),
                     )
                     live.update(display)
@@ -589,16 +600,16 @@ def main(
                         details = not details
                         live.update(
                             _render_processes_table(
-                                processes, selected, details, is_filtering=False
+                                processes, selected, details, is_filtering=False, theme=active_theme
                             )
                         )
                     elif ch == "/":
                         is_filtering = True
                         filter_text = ""
                         display = Group(
-                            create_filter_panel(filter_text),
+                            create_filter_panel(filter_text, active_theme),
                             _render_processes_table(
-                                processes, selected, details, is_filtering=True
+                                processes, selected, details, is_filtering=True, theme=active_theme
                             ),
                         )
                         live.update(display)
@@ -624,7 +635,7 @@ def main(
                             selected = 0
                             live.update(
                                 _render_processes_table(
-                                    processes, selected, details, is_filtering=False
+                                    processes, selected, details, is_filtering=False, theme=active_theme
                                 )
                             )
                     # Ignore other keys
@@ -633,7 +644,7 @@ def main(
                 elif needs_update:
                     live.update(
                         _render_processes_table(
-                            processes, selected, details, is_filtering=False
+                            processes, selected, details, is_filtering=False, theme=active_theme
                         )
                     )
 
@@ -641,7 +652,7 @@ def main(
             if process_to_kill is not None:
                 # Process was selected, show confirmation
                 _clear_screen()
-                if _show_confirmation_view(console, process_to_kill, text):
+                if _show_confirmation_view(console, process_to_kill, text, active_theme):
                     kill_process(process_to_kill.pid)
                     processes = get_processes()
                     selected = min(selected, len(processes) - 1)

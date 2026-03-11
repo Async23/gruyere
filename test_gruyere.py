@@ -4,14 +4,15 @@ import pytest
 from rich.panel import Panel
 
 from gruyere.main import (
-    SELECTED_COLOR,
     Process,
+    _selected_style,
     apply_filter,
     create_filter_panel,
     extract_app_name,
     get_processes,
     parse_port,
 )
+from gruyere.themes import THEMES
 
 
 def test_parse_port_with_integer():
@@ -231,12 +232,13 @@ def test_apply_filter_partial_match():
 
 def test_create_filter_panel():
     """Test that filter panel is created with correct styling."""
-    panel = create_filter_panel("test")
+    theme = THEMES["default"]
+    panel = create_filter_panel("test", theme)
 
     # Panel should be a Rich Panel object
     assert isinstance(panel, Panel)
 
-    assert panel.border_style == SELECTED_COLOR
+    assert panel.border_style == _selected_style(theme)
 
 
 def test_process_sorting_by_port():
